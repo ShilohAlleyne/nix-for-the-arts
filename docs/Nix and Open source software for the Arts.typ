@@ -70,7 +70,7 @@
   == I. An introduction to functional programming
   #line(length: 100%, stroke: 1pt + black)
 
-  Functional programming  is a programming paradigm, whose basal unit of computation is a function, a self contained module of code that accomplishes a specific task @programming_functions). Complex programs are then built through the composition and chaining of these functions. There are a few core tenets to the functional paradigm, the main two being *immutability* and *functional purity*, both of which are intrinsically linked. The concept of functional purity is that given the same inputs, a given function will always produce the same outputs. Pure functions are said to have referential transparency. A classic example of this would be a function which given any number n, adds one to it and returns the result: $f(x) = x + 1$. This function, when given the input $3$ always produces $4$. In a programming language such as Haskell, it would be written as:
+  Functional programming  is a programming paradigm, whose basal unit of computation is a function, a self contained module of code that accomplishes a specific task @why_functional_programming_matters_1984). Complex programs are then built through the composition and chaining of these functions. There are a few core tenets to the functional paradigm, the main two being *immutability* and *functional purity*, both of which are intrinsically linked. The concept of functional purity is that given the same inputs, a given function will always produce the same outputs. Pure functions are said to have referential transparency. A classic example of this would be a function which given any number n, adds one to it and returns the result: $f(x) = x + 1$. This function, when given the input $3$ always produces $4$. In a programming language such as Haskell, it would be written as:
 
   ```haskell
   addOne :: Int -> Int
@@ -86,13 +86,13 @@
     #terms.item[Referential Transparency][The ability to replace a function with its results without affecting the surrounding program.]
   ]
 
-  The package manager and build system, Nix, is purely functional and operates under this same functional programming maxim of immutability. In Nix the packages used to build development environments and software are immutable, and never change after being built. Nix stores packages in a Nix store, where each package has its own unique directory denoted by a cryptographic hash of the package's build dependency graph @how_nix_works. Nix (the package manager) configured in Nix (the functional programming language), where packages are built from _Nix expressions_. A Nix expression describes all aspects of a package build action to form a derivation. Nix expressions are deterministic, as in that building a package from an Nix expression twice will produce the same output.
+  The package manager and build system, Nix, is purely functional and operates under this same functional programming maxim of immutability. In Nix the packages used to build development environments and software are immutable, and never change after being built. Nix stores packages in a Nix store, where each package has its own unique directory denoted by a cryptographic hash of the package's build dependency graph. Nix (the package manager) configured in Nix (the functional programming language), where packages are built from _Nix expressions_. A Nix expression describes all aspects of a package build action to form a derivation. Nix expressions are deterministic, as in that building a package from an Nix expression twice will produce the same output.
 
 
   == II. Nix the functional programming language
   #line(length: 100%, stroke: 1pt + black)
 
-  Nix a domain specific purely functional, dynamically type and lazily evaluated programming language. Nix expressions are expressions written in the Nix programming language, a language with a JSON-esque syntax. Nix even describes itself as JSON with functions. Values in the Nix programming language can be either primitive data type, lists, attribute sets and functions @nix_language_basics_2016.  An attribute set in Nix is a collection of name value pairs, similar to dictionaries or hash maps in other languages. 
+  Nix a domain specific purely functional, dynamically type and lazily evaluated programming language @hausch_hauser_uekermann_2025. Nix expressions are expressions written in the Nix programming language, a language with a JSON-esque syntax. Nix even describes itself as JSON with functions. Values in the Nix programming language can be either primitive data type, lists, attribute sets and functions @nix_language_basics_2016.  An attribute set in Nix is a collection of name value pairs, similar to dictionaries or hash maps in other languages. 
   ```Nix
   {
     string = "hello";
@@ -113,7 +113,7 @@
     *Figure 2.* - An attribute set in the Nix programming language.
   ]
 
-  Being a functional programming language, functions are at the core of Nix code. In Nix functions always take exactly one argument and the argument and function body are separated by a `:`, where the left side is the function's argument and the right the body. All functions in Nix are lambda expressions.  
+  Attribute sets can also inherit from the surrounding lexical scope of a Nix expression and either other attribute sets allowing for greater flexibility@dolstra_2009. Here, ```nix x: inherit x; y = 80``` is a function which returns an attribute set in which the x value is inherited from the `x` function argument. Being a functional programming language, functions are at the core of Nix code. In Nix functions always take exactly one argument and the argument and function body are separated by a `:`, where the left side is the function's argument and the right the body. All functions in Nix are lambda expressions.  
  
   ```nix
   { a, b }: a + b
@@ -123,7 +123,12 @@
   ]
 
 
-  Build inputs in Nix are specified explicitly in two ways, file system paths or through dedicated functions. In Nix, whenever a system path is used via string interpolation, the contents of the file in that path are copied to Nix's own filesystem abstraction, the *nix store*. In Nix, build inputs do not just have to come from the local file system, as part of the Nix's standard library, built in impure functions are provided to fetch files over the network. 
+  Build inputs in Nix are specified explicitly in two ways, file system paths or through dedicated functions. In Nix, whenever a system path is used via string interpolation, the contents of the file in that path are copied to Nix's own filesystem abstraction, the *nix store* @dolstra_jonge_visser_2004. In Nix, build inputs do not just have to come from the local file system, as part of the Nix's standard library, a verity of built in impure functions are provided to fetch files over the network, namely: 
+
+]
+
+#pagebreak()
+#columns(2, gutter: 8pt)[
 
   - `builtins.fetchurl`
   - `builtins.fetchTarball`
@@ -142,13 +147,16 @@
   == III. Nix the build system
   #line(length: 100%, stroke: 1pt + black)
 
+
+
   Build systems all serve one fundamental purpose, to transform source code into executable binaries. While for simple projects, simply evoking the source language's compiler from the terminal with commands  such as `cargo build` for Rust or `cabal build` for Haskell may be sufficient, but as the project scope increases complications may arise and the need for a dedicated build system becomes more apparent. And for projects where the source code is in multiple languages and/or compilation units building is no longer a single step process. A build system not only manages compilation of the project, but it also evaluates the projects dependencies so that it does not rely on any stale binaries.
+
+  Build systems are designed to be both correct and fast, achieving this largely through the use of robust dependency graphs defining the inputs for every build target in the project (source files, configuration, tools) and clever hashing of file contents such that even if a files time stamp has changed, if the file remains genuinely the same, then re-compilation does not need to occur for that file, greatly reducing compile times. This is referred to as Minimality.
 
   #framed_terms[
     #terms.item[Stale binaries][A compiled program or component file which is out of date with respect to the rest of the source code or the dependencies which is built upon. Stale binaries can lead to incorrect behaviour and hard to trace bugs in a codebase.]
+    #terms.item[Minimality][A build system is minimal if it executes tasks at most once per build, and only if they transitively depend on inputs that changed since the previous build @mokhov_mitchell_jones_2020]
   ]
-
-  Build systems are designed to be both correct and fast, achieving this largely through the use of robust dependency graphs defining the inputs for every build target in the project (source files, configuration, tools) and clever hashing of file contents such that even if a files time stamp has changed, if the file remains genuinely the same, then re-compilation does not need to occur for that file, greatly reducing compile times.
 
   Nix is as much a build system as it is a package manager. Nix can build software form source and distribute it as a package. A Nix package is an expression in the Nix programming language which will evaluate to a derivation, a sequence of build steps needed to generate the data required to make a given piece of software. Nix expressions describe how to build packages from source and collected in the _nixpkgs_ repository. Using these expressions the Nix package manager can build binary packages, as well as development environments known as Nix-shells. Nix uses its own immutable abstraction of the file system known as a _Nix store_. 
 
@@ -168,7 +176,7 @@
   Store objects are immutable, as in that once they are created, they do not change nor can any other store object that they reference can be changed. The store plays a pivotal role in way Nix creates derivations for building software, as derivations themselves are specifications for running a given executable on the specified input.
 
   #framed_terms[
-    #terms.item[Opaque Datatype][A datatype with an internal structure that is not available for inspection.]
+    #terms.item[Opaque Datatypes][A datatype with an internal structure that is not available for inspection.]
     #terms.item[Nix Derivations][A  specification for running an executable on precisely defined input to produce on more store objects. These store objects are known as the derivation's _outputs_. Derivations are _built_, in which case the process is spawned according to the spec, and when it exits, required to leave behind files which will (after post-processing) become the outputs of the derivation.]
   ]
 
@@ -349,9 +357,7 @@
   == VI. Nix Shells
   #line(length: 100%, stroke: 1pt + black)
 
-  Setting up complex development environments is incredibly time consuming, and only grows in complexity when taking to account the different configurations individual systems will have. Both Nix and Docker take different approaches to solving this problem.
-
-  Docker is a containerisation platform. Containerization allows for applications and their dependencies to be isolated. Each container contains everything need for the application to run, including the application’s code/binary, its required libraries and configuration file @what_is_a_container_2024. Docker containers all share the kernel on the host machine, but isolate the filesystem, networking and application processes. Nix can set up a shell environment called a `nix-shell`, it is a much more lightweight approach to reproducible environments that Docker. To load a shell environment, Nix first evaluates the `shell.nix` or `flake.nix` file in the root of the current working directory add loads a shell with the specified packages at their locked versions on path. As apposed to Docker, the package dependencies are entirely reproducible. Like Docker, nix-shells do share the host machine kernel but it does not isolate beyond package versions. nix-shells do not permanently install a package, as once you exit a shell, that shell's packages will no longer be available. 
+  Setting up complex development environments is incredibly time consuming, and only grows in complexity when taking to account the different configurations individual systems will have. Both Nix and Docker take different approaches to solving this problem. Docker is a containerisation platform. Containerization allows for applications and their dependencies to be isolated. Each container contains everything need for the application to run, including the application’s code/binary, its required libraries and configuration file @rad_bhatti_ahmadi_2017. Docker containers all share the kernel on the host machine, but isolate the filesystem, networking and application processes. Nix can set up a shell environment called a `nix-shell`, it is a much more lightweight approach to reproducible environments that Docker. To load a shell environment, Nix first evaluates the `shell.nix` or `flake.nix` file in the root of the current working directory add loads a shell with the specified packages at their locked versions on path. As apposed to Docker, the package dependencies are entirely reproducible. Like Docker, nix-shells do share the host machine kernel but it does not isolate beyond package versions. nix-shells do not permanently install a package, as once you exit a shell, that shell's packages will no longer be available. 
 
     
   ```nix
@@ -369,11 +375,6 @@
 
   The function `pkgs-stable.mkShell` is part of Nix's standard library. It a generalised form of the `stdenv.mkDerivation` function and abstracts away some of the common repetition of making shell environments. Other as part of a flake output, nix-shell environments can also be declared using a `shell.nix` file. Nix-shells provide a lightweight alternative to development environments compared to heavier handed Docker. Although there is less isolation of the resulting applications processes, nix-shells require much less resources.
 
-  == VII. Open source software for the Arts
-  #line(length: 100%, stroke: 1pt + black)
-
-  The appeal of open _Free and Open Source Software_ (FOSS) is the increased control over the code running on their machine. As a package and easily be audited by reading through its source code, this level of transparency in turn, increases the security of FOSS software as bugs in the source code can be spotted and patched by that's software's community. FOSS software is very stable for long-term projects due to the distributed nature of the source code. 
-
 ]
 
 #pagebreak()
@@ -386,7 +387,10 @@
 
 #columns(2, gutter: 8pt)[
 
-  If a FOSS reliant part of program or application grows stale or falls into disrepair by its original creators, then that part of the program can just as easily be continued by community at large and have development continued.
+  == VII. Open source software for the Arts
+  #line(length: 100%, stroke: 1pt + black)
+
+  The appeal of open _Free and Open Source Software_ (FOSS) is the increased control over the code running on their machine. As a package and easily be audited by reading through its source code, this level of transparency in turn, increases the security of FOSS software as bugs in the source code can be spotted and patched by that's software's community. FOSS software is very stable for long-term projects due to the distributed nature of the source code. If a FOSS reliant part of program or application grows stale or falls into disrepair by its original creators, then that part of the program can just as easily be continued by community at large and have development continued. Over the past decade, this kind of permissive licensing that allows for easy incorporation of FOSS projects has been promoted on source code hosting platforms such as Github @picha_serbout_2024.
 
   Nix is fundamentally built on a source deployment model, where packages are built from source Nix deviations into its unique path in the Nix store. For a lot of users, building from source can be frustrating, due the time it can take. However building from source with Nix allows for a high level of reproducibility, flexibility and transparency in open source software. By having the compilation of the software taking place on the end users personal hardware a large swath of supply chain vulnerabilities are avoided @dellaiera_2024.
 
@@ -404,11 +408,6 @@
   The GNU General Public License (GPL) is the single largest type of license in the nixpkgs repository, being carried by 36% of the available packages in our sample. Its a reciprocal license that mandates that derivative works must release under a license offering the same freedoms as the GPL license. Like other FOSS licenses it allows for the modification and distribution of the source code. The Lesser General Public License (LGPL) constitutes 6% of the packages in nixpkgs.
 
   With the majority of packages in nixpkgs being openly permissive through the MIT, Apache and BSL licenses  (46% combined), licence compatibly of open source components to an artwork remains manageable and flexible with the permissive nature of these licences allowing the creator of the artwork the digression of how they want to handle the source code for their project. Copyleft license are the next largest group in the nixpkgs repository accounting for 42% of the packages in our sample, artworks which that would fall under this license, would have to provide their source code to each institution that hosts said work, however in efforts to reproduce and preserve digital work, supplying artwork with source may ultimately be preferred, especially when utilising the source deployment model which Nix thrives upon.
-
-]
-
-#pagebreak()
-#columns(2, gutter: 8pt)[
 
   #framed_terms[
     #terms.item[Copyleft Licenses][Copyleft is an Intellectual Property legal technique which asserts that derivative works of a copyrighted material are persevered with same freedom to modify and distribute as its source material.]
