@@ -53,6 +53,11 @@
 ])
 #set page(numbering: "— 1 —")
 
+// #import "@preview/wordometer:0.1.5": word-count, total-words
+// #show: word-count
+//
+// Total: #total-words
+
 // Title
 #let title_styled(title) = block(spacing: 2em)[
   #set text(size: 16pt, weight: "bold")
@@ -87,6 +92,21 @@
   ]
 
   The package manager and build system, Nix, is purely functional and operates under this same functional programming maxim of immutability. In Nix the packages used to build development environments and software are immutable, and never change after being built. Nix stores packages in a Nix store, where each package has its own unique directory denoted by a cryptographic hash of the package's build dependency graph. Nix (the package manager) configured in Nix (the functional programming language), where packages are built from _Nix expressions_. A Nix expression describes all aspects of a package build action to form a derivation. Nix expressions are deterministic, as in that building a package from an Nix expression twice will produce the same output.
+
+  #framed_terms[
+    #terms.item[Reproducibility][ 
+        Reproducibility is a property of a computation satisfying the following condition:
+
+        $forall c in C, forall i in I, forall e_1, e_2 in E, "eval" = (c, i, e_1) = "eval" = (c, i, e_2)$
+
+        where
+        - C is the set of all possible computations
+        - I is the set of all possible input arguments
+        - E is the set of all possible execution environments (such as hardware, software, spacetime)
+
+        If a computation satisfies this condition then it said to be reproducible @dellaiera_2024.
+      ]
+  ]
 
 
   == II. Nix the functional programming language
@@ -125,10 +145,6 @@
 
   Build inputs in Nix are specified explicitly in two ways, file system paths or through dedicated functions. In Nix, whenever a system path is used via string interpolation, the contents of the file in that path are copied to Nix's own filesystem abstraction, the *nix store* @dolstra_jonge_visser_2004. In Nix, build inputs do not just have to come from the local file system, as part of the Nix's standard library, a verity of built in impure functions are provided to fetch files over the network, namely: 
 
-]
-
-#pagebreak()
-#columns(2, gutter: 8pt)[
 
   - `builtins.fetchurl`
   - `builtins.fetchTarball`
@@ -147,29 +163,43 @@
   == III. Nix the build system
   #line(length: 100%, stroke: 1pt + black)
 
+  Build systems automate the execution of repeatable tasks for for users. The goal of a build system is to build up an up to date store, which maps keys to their associated value. In software, the store is projects filesystem and keys are the files and the values are the file contents @mokhov_mitchell_jones_2020. A build system takes a _task_, a target key and store and returns a new store in which target key and all its values have an up to date value, this kind of action, usually referred to as a build step can be seen a function with the type signature: ```haskell build :: Tasks c k v-> k-> Store i k v-> Store i k v```. Most build systems also contain some form of persistent build information, which retains information between invocations of the build system. Build systems are composed of a `scheduler` and a `rebuilder`.
 
+  #framed_terms[
+	#terms.item[Task][A specification on how compute a new value from a key a in a build system. Requires user input.]
+  ]
 
-  Build systems all serve one fundamental purpose, to transform source code into executable binaries. While for simple projects, simply evoking the source language's compiler from the terminal with commands  such as `cargo build` for Rust or `cabal build` for Haskell may be sufficient, but as the project scope increases complications may arise and the need for a dedicated build system becomes more apparent. And for projects where the source code is in multiple languages and/or compilation units building is no longer a single step process. A build system not only manages compilation of the project, but it also evaluates the projects dependencies so that it does not rely on any stale binaries.
+  A `scheduler` is a function which takes two arguments, a rebuilder and constructs a build system but determining the order in which keys must be rebuild. There are a few different kinds of schedulers, namely:
+  1. *Topological* — This kind of scheduler computes build tasks in a linear order, it does so by finding an acyclic graph of the each key’s reachable dependences then computing a topological sort.  
+  2. *Restarting* — Restarting schedulers execute build tasks in an arbitrary order, evaluating their dependencies on the fly and whenever a task calls an out of date dependency, _abort_ the task and rebuild that said dependency. The discovered task order and the most recent dependency information is often recorded as a persistent build information, often reducing the number of task aborts needed in a build to near 0.
+  3. *Suspending* — A suspending scheduler builds dependencies as they are requested, simply suspending the current task on such occurrences. Suspension of tasks can be done via cheap green threads or continuation passing style @claessen_1999. 
 
-  Build systems are designed to be both correct and fast, achieving this largely through the use of robust dependency graphs defining the inputs for every build target in the project (source files, configuration, tools) and clever hashing of file contents such that even if a files time stamp has changed, if the file remains genuinely the same, then re-compilation does not need to occur for that file, greatly reducing compile times. This is referred to as Minimality.
+  A `rebuilder` is a function which takes three arguments, a key (file), a value (file contents) and a task which is used to recompute the value of the key if deemed necessary. However, if it is unnecessary to update a keys values then the `rebuilder` function simply returns the value passed in as an argument unchanged. There are a few common strategies for rebuilding.
+  1. *Dirty Bit* — A piece of persistent information for all keys in a build system, a `Bool` value indicating whether a key is dirty (it’s value has changes) or clean (it’s value is unchanged since last build). If a key and all its transitive dependencies are clean then the key does not need to be rebuild. Every build all keys bit are set to clean.
+  2. *Verifying Traces* — A record of a keys values or hashes of dependencies used in the last build, if something has changed then that key is dirty. To verify if a key needs to be rebuilt a function which takes a target key, a hash of the key’s current value and and a function for getting the post build value of any key in the system (this is done in conjunction with that build systems scheduler). The result of this function is a `Bool` where `True` indicates that the key does not need rebuilding and `False` indicates the opposite. 
+  3. *Constructive Traces* — Whereas verifying traces rely on hashing to keep a compact profile, constructive traces record the full previous value of a key rather than just its hash, storing complete results. Multiple traces may be associated with a single key, and this rebuild strategy is particularly valuable in cloud-based systems where sharing and reusing full outputs improves efficiency.
+  4. *Deep Constructive Traces* — Constructive traces always verify key by looking at it’s intermediate dependencies, which require each of these transitive dependencies to be first brought up to date, making the time it takes to verify a key reliant on its number of intermediate dependencies. A Deep constructive trace optimises this process by only looking at the terminal input keys, ignoring any intermediate dependencies @mokhov_mitchell_jones_2020.
+
+  When needed both the `scheduler` and `rebuilder` functions may use persistent build information to augment their processes.  Build systems are designed to be both correct and fast, achieving this largely through the use of robust dependency graphs defining the inputs for every build target in the project (source files, configuration, tools) and clever hashing of file contents such that even if a files time stamp has changed, if the file remains genuinely the same, then re-compilation does not need to occur for that file, greatly reducing compile times. This is referred to as Minimality.
 
   #framed_terms[
     #terms.item[Stale binaries][A compiled program or component file which is out of date with respect to the rest of the source code or the dependencies which is built upon. Stale binaries can lead to incorrect behaviour and hard to trace bugs in a codebase.]
     #terms.item[Minimality][A build system is minimal if it executes tasks at most once per build, and only if they transitively depend on inputs that changed since the previous build @mokhov_mitchell_jones_2020]
   ]
 
-  Nix is as much a build system as it is a package manager. Nix can build software form source and distribute it as a package. A Nix package is an expression in the Nix programming language which will evaluate to a derivation, a sequence of build steps needed to generate the data required to make a given piece of software. Nix expressions describe how to build packages from source and collected in the _nixpkgs_ repository. Using these expressions the Nix package manager can build binary packages, as well as development environments known as Nix-shells. Nix uses its own immutable abstraction of the file system known as a _Nix store_. 
+  #colbreak()
+  Nix is as much a build system as it is a package manager. It uses a _suspending scheduler_ and _deep constructive trace rebuilder_. Nix can also distribute the software that it builds as a package. A Nix package is an expression in the Nix programming language which will evaluate to a derivation, a sequence of build steps needed to generate the data required to make a given piece of software. Nix expressions describe how to build packages from source and collected in the _nixpkgs_ repository. Using these expressions the nix package manger can build binary packages, as well a development environments known as Nix-shells. Nix has uses its own immutable abstraction of the file system known as a Nix store. The default nix store on the local files systems is /nix/store. They are a collection of store objects, a store object consists of:
 
-  The default `nix store` on the local files systems is `/nix/store`. Inside a `nix store` there are a collection of _store objects_, a store object can consist of:
   - A file system object as data
   - A set of store paths as references to store objects
+  
+  A File system object will be one of the following:
 
-  A file system object will be one of the following: 
-  - A file 
+  - A file
   - A Directory
   - A Symbolic Link (A file which refers to another file in another directory as a path)
 
-  A store path is an opaque unique identifier. A store path will always reference exactly one store object. Store objects are pairs of:
+  A file system object can be either a file/directory or symbolic link (A file which refers to another file in another directory as a path). A store path is an opaque unique identifier. A store path will always reference exactly one store object. Store objects are pairs of:
   1. A 20-byte digest for identification
   2. A human readable symbolic name
 
@@ -230,11 +260,12 @@
       });
   }
   ```
+  #colbreak()
   #appendix[
     *Figure 5* - Example Nix expression pinning the `sl` package specifically to the `923e7d7ebc5c1f009755bdeb789ac25658ccce03` revision. Placeholder hashes such as `sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=` can be used, and Nix's `hash mismatch error` will provide the correct one as part of its error message upon evaluation of the Nix expression.
   ]
 
-  It is similarly easy to add patches to a package:
+  It is similarly easy to apply a patch to package in Nix.
 
   ```nix
   final: prev:
@@ -292,10 +323,7 @@
   Flake inputs can be either local or remote, with a differing syntax for each. Remote inputs have a url-like syntax such as: 
   `github:NixOS/nixpkgs`. If the flake input is refers to a local repository, then it will take the form of `git:/home/user/sub/dir`. If the path of the flake input begins with `./` or `/` then it is treated as local path. Inputs in a Nix flake can *inherit* from other inputs, which is useful in minimizing flake dependencies, and can simplify any potential debugging. Input inheritance has the following syntax: `inputs.nixpkgs.follows = "dwarffs/nixpkgs";`. Inputs in a `flake.nix` tend to not have the specific version hashes referenced within the input URL. Instead to ensure reproducibility Nix generates a `flake.lock` file in the flakes directory on the first evaluation of said flake. The lockfile is a UTF-8 JSON file containing the graph structure isomorphic to the graph of dependencies for the root flake. An example flake.lock file is would the following:
 
-  #framed_terms[
-    #terms.item[Lockfile][A type of file generated usually generated by a package manager, it is typically not meant to be edited, but is instead a reflection of the resolved dependency tree for a project @gamage_tiwari_monperrus_baudry_2025. They usually have the file type `.lock`.]
-  ]
-  
+
   ```json
   {
     "nodes": {
@@ -342,7 +370,7 @@
   }
   ```
   #appendix[
-    *Figure 8.* - An example `Flake.lock` file, containing 3 nodes and the root flake.
+    *Figure 8.* - An example `Flake.lock` file, containing 2 nodes and the root flake.
   ]
 
   A resolved `Flake.lock` file dependency graph structure is represented through nodes, each node will contain:
@@ -353,13 +381,32 @@
 
   Lock files are the key component of reproducible builds and remain static, never changing once resolved. The only way to update the inputs in a nix flake is either manually by editing that inputs' associated revision and hash and changing them to desired version or through the command `nix flake lock --update-input <input-name>` which will update the specified input, `<input-name>`. It is also possible to update all inputs in a flake via the command `nix flake update`, which will generate an entirely new `flake.lock` in-place. If a flake's lock file is deleted, a new one will be generated upon the next evaluation of the flake and dependency versions may differ.
 
+  #framed_terms[
+    #terms.item[Lockfile][A type of file generated usually generated by a package manager, it is typically not meant to be edited, but is instead a reflection of the resolved dependency tree for a project @gamage_tiwari_monperrus_baudry_2025. They usually have the file type `.lock`.]
+  ]
+
+  Once the inputs of a flake are resolved, they are passed to the function which returns the output of flake. This function always takes in `self` and the input variables as arguments. Flakes in Nix can output source code as packages, development environments, and even the outputs of other flakes.
+
+  ```nix
+  outputs = { self, nixpkgs }: {
+      packages.x86_64-linux = {
+          default = self.packages.x86_64-linux.hello;
+          hello = nixpkgs.legacyPackages.x86_64-linux.hello;
+      };
+  };
+  ```
+  #appendix[
+    *Figure 9.* - A very simple flake output which exposes the hello package for the `x86_64-linux` architecture.
+  ]
+
+
 
   == VI. Nix Shells
   #line(length: 100%, stroke: 1pt + black)
 
   Setting up complex development environments is incredibly time consuming, and only grows in complexity when taking to account the different configurations individual systems will have. Both Nix and Docker take different approaches to solving this problem. Docker is a containerisation platform. Containerization allows for applications and their dependencies to be isolated. Each container contains everything need for the application to run, including the application’s code/binary, its required libraries and configuration file @rad_bhatti_ahmadi_2017. Docker containers all share the kernel on the host machine, but isolate the filesystem, networking and application processes. Nix can set up a shell environment called a `nix-shell`, it is a much more lightweight approach to reproducible environments that Docker. To load a shell environment, Nix first evaluates the `shell.nix` or `flake.nix` file in the root of the current working directory add loads a shell with the specified packages at their locked versions on path. As apposed to Docker, the package dependencies are entirely reproducible. Like Docker, nix-shells do share the host machine kernel but it does not isolate beyond package versions. nix-shells do not permanently install a package, as once you exit a shell, that shell's packages will no longer be available. 
 
-    
+
   ```nix
   devShells.${system}.default = pkgs-stable.mkShell {
       packages = [
@@ -375,6 +422,14 @@
 
   The function `pkgs-stable.mkShell` is part of Nix's standard library. It a generalised form of the `stdenv.mkDerivation` function and abstracts away some of the common repetition of making shell environments. Other as part of a flake output, nix-shell environments can also be declared using a `shell.nix` file. Nix-shells provide a lightweight alternative to development environments compared to heavier handed Docker. Although there is less isolation of the resulting applications processes, nix-shells require much less resources.
 
+  
+  == VII. Open source software for the Arts
+  #line(length: 100%, stroke: 1pt + black)
+
+  The appeal of open _Free and Open Source Software_ (FOSS) is the increased control over the code running on their machine. As a package and easily be audited by reading through its source code, this level of transparency in turn, increases the security of FOSS software as bugs in the source code can be spotted and patched by that's software's community. FOSS software is very stable for long-term projects due to the distributed nature of the source code. If a FOSS reliant part of program or application grows stale or falls into disrepair by its original creators, then that part of the program can just as easily be continued by community at large and have development continued. Over the past decade, this kind of permissive licensing that allows for easy incorporation of FOSS projects has been promoted on source code hosting platforms such as Github @picha_serbout_2024.
+
+  Nix is fundamentally built on a source deployment model, where packages are built from source Nix deviations into its unique path in the Nix store. This is apposed to the majority of package managers in which the software distribution is binary based. For a lot of users, building from source can be frustrating, due the time it can take. However building from source with Nix allows for a high level of reproducibility, flexibility and transparency in open source software. By having the compilation of the software taking place on the end users personal hardware a large swath of supply chain vulnerabilities are avoided @dellaiera_2024.
+
 ]
 
 #pagebreak()
@@ -382,17 +437,10 @@
   image("License and Sub-License Distribution of nixpkgs.png", width: 60%)
 )
 #appendix[
-  *Figure 10.* - The license and sub-license distribution in a sample of 16789 different packages available from the nixpkgs repository for the x86_64-linux platform. 
+  *Figure 11.* - The license and sub-license distribution in a sample of 16789 different packages available from the nixpkgs repository for the x86_64-linux platform. 
 ]
 
 #columns(2, gutter: 8pt)[
-
-  == VII. Open source software for the Arts
-  #line(length: 100%, stroke: 1pt + black)
-
-  The appeal of open _Free and Open Source Software_ (FOSS) is the increased control over the code running on their machine. As a package and easily be audited by reading through its source code, this level of transparency in turn, increases the security of FOSS software as bugs in the source code can be spotted and patched by that's software's community. FOSS software is very stable for long-term projects due to the distributed nature of the source code. If a FOSS reliant part of program or application grows stale or falls into disrepair by its original creators, then that part of the program can just as easily be continued by community at large and have development continued. Over the past decade, this kind of permissive licensing that allows for easy incorporation of FOSS projects has been promoted on source code hosting platforms such as Github @picha_serbout_2024.
-
-  Nix is fundamentally built on a source deployment model, where packages are built from source Nix deviations into its unique path in the Nix store. For a lot of users, building from source can be frustrating, due the time it can take. However building from source with Nix allows for a high level of reproducibility, flexibility and transparency in open source software. By having the compilation of the software taking place on the end users personal hardware a large swath of supply chain vulnerabilities are avoided @dellaiera_2024.
 
   == VIII. Nixpkgs as a source of free and open source software
   #line(length: 100%, stroke: 1pt + black)
@@ -448,3 +496,4 @@
 
   #bibliography("./ref.bib")
 ]
+// ])
